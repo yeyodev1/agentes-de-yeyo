@@ -1,5 +1,6 @@
 // Responde los mensajes de Diego en Telegram. El Worker guarda cada mensaje en D1
 // y dispara este workflow; aquí se contestan todos los pendientes de una vez.
+import { readFile } from "node:fs/promises";
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { correrAgente, error, ok, sinApertura } from "../comun/agente.ts";
@@ -131,9 +132,29 @@ const lanzar = tool(
   },
 );
 
+// La voz va siempre: si Diego pide un borrador, tiene que sonar a él.
+const [voz, vozX, vozLinkedin, reglas] = await Promise.all([
+  readFile("contenido/voz.md", "utf8"),
+  readFile("contenido/voz-x.md", "utf8"),
+  readFile("contenido/voz-linkedin.md", "utf8"),
+  sql<{ red: string; texto: string }>("SELECT red, texto FROM aprendizajes WHERE activo = 1 ORDER BY fecha DESC LIMIT 40"),
+]);
+
 const formato = (m: Mensaje) => `[${m.fecha.slice(0, 16)}] ${m.rol === "diego" ? "Diego" : "Tú"}: ${m.texto}`;
 
 const prompt = `Hoy es ${hoy()}. Eres el asistente que maneja las redes de Diego Reyes (Yeyo): un agente publica en LinkedIn 1 vez al día y otro en X cada pocas horas, de forma autónoma. Diego te habla por Telegram. Tienes acceso a la memoria compartida (posts con métricas, lo que lee, material, aprendizajes, config) y a la web.
+
+<voz>
+${voz}
+
+${vozX}
+
+${vozLinkedin}
+</voz>
+
+<aprendizajes>
+${reglas.map((r) => `- [${r.red}] ${r.texto}`).join("\n") || "(todavía ninguno)"}
+</aprendizajes>
 
 <conversacion_previa>
 ${historial.map(formato).join("\n") || "(primera conversación)"}
@@ -147,6 +168,7 @@ Cómo trabajar:
 - Responde a los mensajes nuevos. Si te pide algo, hazlo con tus herramientas y confirma qué hiciste.
 - Cada vez que Diego corrija el estilo o diga qué le gusta o no, guárdalo con guardar_aprendizaje. Cada vez que cuente algo que hizo o le pasó, guárdalo con guardar_material. Así los agentes mejoran solos.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
+- Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
 - Usa emojis para que se lea vivo y fácil de escanear: uno al inicio de cada idea o dato (📊 métricas, ✅ hecho, 🐦 X, 💼 LinkedIn, 🧠 aprendí, 📝 guardado, ⚠️ ojo, 🚀 lanzado). Para varios datos, una línea por dato empezando con su emoji. Nada de markdown (*, #, **): Telegram lo muestra tal cual.`;
