@@ -9,8 +9,8 @@ import { guardarConfig } from "../src/comun/memoria.ts";
 
 const PUERTO = 8787;
 const REDIRECT_URI = `http://127.0.0.1:${PUERTO}/callback`;
-// offline.access da el refresh token; bookmark.read y like.read alimentan el radar.
-const SCOPES = "tweet.read tweet.write users.read bookmark.read like.read offline.access";
+// offline.access da el refresh token; media.write sube imágenes; bookmark.read y like.read alimentan el radar.
+const SCOPES = "tweet.read tweet.write users.read media.write bookmark.read like.read offline.access";
 
 const { X_CLIENT_ID: clientId, X_CLIENT_SECRET: clientSecret } = process.env;
 if (!clientId || !clientSecret) {

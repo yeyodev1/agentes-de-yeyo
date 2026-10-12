@@ -8,6 +8,7 @@ import { guardarConfig, guardarPost, sql } from "../comun/memoria.ts";
 import { avisar } from "../comun/telegram.ts";
 import { borrarPost, publicarPost, urlPost } from "../linkedin/api.ts";
 import { borrarTweet, publicarHilo, urlTweet, yo } from "../x/api.ts";
+import { citar, hilo, textoDeHilo } from "../x/formato.ts";
 
 type Mensaje = { id: number; fecha: string; rol: string; texto: string };
 
@@ -25,7 +26,7 @@ const consultar = tool(
   "consultar_memoria",
   `Consulta SQL de solo lectura (SQLite/D1) sobre la memoria. Tablas:
 posts(red, externo_id, fecha, texto, gancho, estructura, tema, origen, metricas JSON, borrado)
-fuentes(fecha, origen 'telegram'|'x_bookmark'|'x_like'|'x_radar', autor, url, texto, metricas)
+fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar', autor, url, texto, metricas)
 material(fecha, texto) · aprendizajes(fecha, red, texto, origen, activo) · config(clave, valor)
 Las claves x_refresh_token y x_access_token son secretas: nunca las muestres.`,
   { consulta: z.string() },
@@ -79,22 +80,25 @@ const configurar = tool(
 
 const publicar = tool(
   "publicar_ahora",
-  "Publica YA un texto que Diego dictó o aprobó explícitamente en este chat. No la uses para contenido que se te ocurrió a ti: para eso está lanzar_agente.",
+  "Publica YA algo que Diego dictó o aprobó explícitamente en este chat (por ejemplo un borrador que le dejó el agente de X). No la uses para contenido que se te ocurrió a ti: para eso está lanzar_agente.",
   {
     red: z.enum(["linkedin", "x"]),
-    partes: z.array(z.string().min(1)).min(1).max(5).describe("LinkedIn: 1 elemento. X: 1 tweet o un hilo de hasta 5, cada uno ≤ 280"),
+    tweets: hilo.optional().describe("Solo X: tweet suelto o hilo"),
+    citar,
+    texto_linkedin: z.string().optional().describe("Solo LinkedIn: el post completo"),
   },
-  async ({ red, partes }) => {
-    partes = partes.map(sinApertura);
+  async ({ red, tweets, citar, texto_linkedin }) => {
     if (red === "x") {
-      if (partes.some((p) => p.length > 280)) return error("Algún tweet pasa de 280 caracteres.");
-      const ids = await publicarHilo(partes);
-      const texto = partes.join("\n\n—\n\n");
-      await guardarPost({ red, externo_id: ids[0], fecha: ahora(), texto, gancho: null, estructura: null, tema: null, origen: "diego" });
+      if (!tweets) return error("Falta tweets.");
+      tweets = tweets.map((t) => ({ ...t, texto: sinApertura(t.texto) }));
+      const ids = await publicarHilo(tweets, citar);
+      await guardarPost({ red, externo_id: ids[0], fecha: ahora(), texto: textoDeHilo(tweets), gancho: null, estructura: null, tema: null, origen: "diego" });
       return ok(`Publicado: ${urlTweet((await yo()).username, ids[0])}`);
     }
-    const urn = await publicarPost(partes[0]);
-    await guardarPost({ red, externo_id: urn, fecha: ahora(), texto: partes[0], gancho: null, estructura: null, tema: null, origen: "diego" });
+    if (!texto_linkedin) return error("Falta texto_linkedin.");
+    const texto = sinApertura(texto_linkedin);
+    const urn = await publicarPost(texto);
+    await guardarPost({ red, externo_id: urn, fecha: ahora(), texto, gancho: null, estructura: null, tema: null, origen: "diego" });
     return ok(`Publicado: ${urlPost(urn)}`);
   },
 );
@@ -143,7 +147,7 @@ Cómo trabajar:
 - Responde a los mensajes nuevos. Si te pide algo, hazlo con tus herramientas y confirma qué hiciste.
 - Cada vez que Diego corrija el estilo o diga qué le gusta o no, guárdalo con guardar_aprendizaje. Cada vez que cuente algo que hizo o le pasó, guárdalo con guardar_material. Así los agentes mejoran solos.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
-- Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente.
+- Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram: texto plano, corto, en español, como un colega. Sin markdown, sin ¿ ni ¡.`;
 
 const respuesta =

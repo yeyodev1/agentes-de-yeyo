@@ -3,9 +3,10 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { correrAgente, error, ok, sinApertura } from "../comun/agente.ts";
 import { contexto, hoy } from "../comun/contexto.ts";
-import { guardarConfig, guardarPost, leerConfig, postsDeHoy } from "../comun/memoria.ts";
+import { guardarConfig, guardarPost, leerConfig, postsDeHoy, sql } from "../comun/memoria.ts";
 import { avisar } from "../comun/telegram.ts";
 import { publicarHilo, urlTweet, yo } from "./api.ts";
+import { citar, hilo, textoDeHilo } from "./formato.ts";
 
 const DRY_RUN = process.env.DRY_RUN === "1";
 const FRECUENCIAS = [1, 2, 3, 4, 6, 8];
@@ -26,31 +27,47 @@ const cadaHoras = await leerConfig("x_cada_horas", "4");
 let publicado: { ids: string[]; texto: string } | null = null;
 let decision = "";
 
-const tweet = z
-  .string()
-  .min(20)
-  .max(280)
-  .refine((t) => !/https?:\/\/|www\./i.test(t), "Sin links: X les baja el alcance y cuestan $0.20 por la API");
-
 const publicar = tool(
   "publicar_tweet",
-  "Publica en X. Un tweet normal va como lista de 1 elemento; un hilo, de 2 a 5. Llámala UNA sola vez.",
+  "Publica en X: un tweet suelto o un hilo. Llámala UNA sola vez.",
   {
-    tweets: z.array(tweet).min(1).max(5).describe("Texto de cada tweet, en orden"),
-    tipo: z.string().describe("Tipo de tweet según <voz>, ej. 'opinión', 'construyendo', 'tip'"),
+    tweets: hilo,
+    citar,
+    tipo: z.string().describe("Tipo de tweet según <voz>, ej. 'opinión', 'construyendo', 'tip', 'hilo paso a paso'"),
     gancho: z.string().describe("Cómo abre, ej. 'dato', 'confesión', 'contraintuitivo'"),
     tema: z.string().describe("Tema en 3 a 6 palabras"),
   },
-  async ({ tweets, tipo, gancho, tema }) => {
+  async ({ tweets, citar, tipo, gancho, tema }) => {
     if (publicado) return error("Ya publicaste en esta ejecución.");
-    tweets = tweets.map(sinApertura);
-    const ids = DRY_RUN ? ["dry-run"] : await publicarHilo(tweets);
-    const texto = tweets.join("\n\n—\n\n");
+    tweets = tweets.map((t) => ({ ...t, texto: sinApertura(t.texto) }));
+    let ids: string[];
+    try {
+      ids = DRY_RUN ? ["dry-run"] : await publicarHilo(tweets, citar);
+    } catch (e) {
+      return error(`No se pudo publicar: ${e instanceof Error ? e.message : e}. Si fue la imagen, intenta sin ella o con otra.`);
+    }
+    const texto = (citar ? `[cita el tweet ${citar}]\n` : "") + textoDeHilo(tweets);
     publicado = { ids, texto };
     if (!DRY_RUN) {
       await guardarPost({ red: "x", externo_id: ids[0], fecha: new Date().toISOString(), texto, gancho, estructura: tipo, tema, origen: "agente" });
     }
     return ok(`Publicado (${ids.join(", ")}).`);
+  },
+);
+
+const borrador = tool(
+  "dejar_borrador",
+  "Si tienes una buena idea pero dudas de que encaje con la voz o los límites (tema sensible, opinión fuerte sobre alguien, dato que no puedes verificar), no publiques: déjale el borrador a Diego por Telegram para que lo revise.",
+  { tweets: hilo, citar, motivo: z.string().describe("Por qué dudas") },
+  async ({ tweets, citar, motivo }) => {
+    const texto = `📝 Borrador para revisar (${motivo})\n\n${citar ? `[cita el tweet ${citar}]\n` : ""}${textoDeHilo(tweets)}\n\nDime "publícalo", pídeme cambios o ignóralo.`;
+    decision = `Dejé un borrador: ${motivo}`;
+    if (!DRY_RUN) {
+      await avisar(texto);
+      // Queda en el chat para que el agente de Telegram sepa de qué borrador le hablan.
+      await sql("INSERT INTO chat (fecha, rol, texto) VALUES (?, 'agente', ?)", [new Date().toISOString(), texto]);
+    }
+    return ok("Borrador enviado a Diego.");
   },
 );
 
@@ -85,10 +102,15 @@ Cómo hacerlo:
 1. Mira <posts_recientes_x> y sus métricas: qué tipo de tweet funcionó y qué no. Revisa <lo_que_diego_lee> y <material_reciente> para ver qué hay nuevo.
 2. Decide si vale la pena publicar ahora. Si no hay nada bueno, usa no_publicar.
 3. Si publicas, elige un tipo y un gancho distintos a los de los últimos tweets y escríbelo siguiendo <voz> y <aprendizajes>. Solo hechos reales de las fuentes: no inventes cifras, clientes ni anécdotas. Nunca nombres clientes de Bakano.
-4. Opcional: si las métricas de varios días muestran algo claro, ajusta tu frecuencia con cambiar_frecuencia.
-5. Termina en cuanto publiques o decidas no publicar.`;
+4. Refuerza el tweet cuando sume:
+   - Referencia: si reaccionas a un tweet de <lo_que_diego_lee>, cítalo con citar (el id sale de su URL) y aporta tu experiencia; no lo resumas.
+   - Imagen: las fotos que mandó Diego (origen telegram_foto, url "tg:...") son lo mejor porque son reales. También sirve la imagen principal de un artículo que comentas (búscala con WebFetch). Nunca inventes una URL de imagen.
+   - Hilo: cuando hay un paso a paso o una historia con varias partes, y como máximo uno al día.
+5. Si dudas de algo, usa dejar_borrador en lugar de publicar.
+6. Opcional: si las métricas de varios días muestran algo claro, ajusta tu frecuencia con cambiar_frecuencia.
+7. Termina en cuanto publiques, dejes el borrador o decidas no publicar.`;
 
-const resultado = await correrAgente({ prompt, herramientas: [publicar, noPublicar, cambiarFrecuencia], effort: "medium" });
+const resultado = await correrAgente({ prompt, herramientas: [publicar, borrador, noPublicar, cambiarFrecuencia], effort: "medium" });
 
 if (publicado) {
   const final: { ids: string[]; texto: string } = publicado;

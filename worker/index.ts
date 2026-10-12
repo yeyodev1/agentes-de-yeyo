@@ -7,6 +7,7 @@ interface Env {
   GH_TOKEN_DISPARO: string;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
+  TELEGRAM_VINCULO: string; // código del link t.me/<bot>?start=<código> que vincula a Diego
   TELEGRAM_CHAT_ID?: string;
 }
 
@@ -16,6 +17,7 @@ type Mensaje = {
   from?: { id: number };
   text?: string;
   caption?: string;
+  photo?: { file_id: string; width: number }[];
   forward_origin?: { type: string; sender_user?: { username?: string }; chat?: { username?: string; title?: string } };
 };
 
@@ -53,11 +55,24 @@ export default {
 async function atender(m: Mensaje, env: Env): Promise<void> {
   const texto = (m.text ?? m.caption ?? "").trim();
 
-  // Antes de configurar TELEGRAM_CHAT_ID, el bot solo dice cuál es tu chat id.
+  // El dueño se vincula una sola vez abriendo t.me/<bot>?start=<TELEGRAM_VINCULO>.
+  env.TELEGRAM_CHAT_ID ||= (await config(env, "telegram_chat_id")) ?? undefined;
   if (!env.TELEGRAM_CHAT_ID) {
-    return void (await telegram(env, "sendMessage", { chat_id: m.chat.id, text: `Tu chat id es ${m.chat.id}. Guárdalo como secret TELEGRAM_CHAT_ID.` }));
+    if (texto !== `/start ${env.TELEGRAM_VINCULO}`) return;
+    await guardarConfig(env, "telegram_chat_id", String(m.chat.id));
+    env.TELEGRAM_CHAT_ID = String(m.chat.id);
+    return responder(env, "Listo Diego, quedé vinculado contigo 🤝 Escribe /ayuda para ver qué puedo hacer.");
   }
   if (String(m.from?.id) !== env.TELEGRAM_CHAT_ID) return; // solo Diego
+
+  // Fotos: quedan como material visual que los agentes pueden poner en los tweets.
+  const foto = m.photo?.at(-1);
+  if (foto) {
+    await env.DB.prepare("INSERT INTO fuentes (fecha, origen, externo_id, url, texto) VALUES (?, 'telegram_foto', ?, ?, ?)")
+      .bind(new Date().toISOString(), String(m.message_id), `tg:${foto.file_id}`, texto || "(foto sin descripción)")
+      .run();
+    if (!texto || /^https?:\/\/\S+$/.test(texto)) return reaccionar(env, m, "👌");
+  }
 
   const [comando, arg = ""] = texto.split(/\s+/, 2);
   const redes = arg === "x" ? ["x"] : arg === "linkedin" ? ["linkedin"] : ["x", "linkedin"];
@@ -80,13 +95,13 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
     case "/ayuda":
       return responder(
         env,
-        "Háblame normal: pregúntame por métricas, corrígeme el estilo, cuéntame qué hiciste hoy o dime qué publicar.\n\nMándame links o reenvíame posts y los uso como inspiración.\n\nAtajos:\n/estado\n/pausa [x|linkedin]\n/sigue [x|linkedin]\n/ya x · /ya linkedin · /ya radar",
+        "Háblame normal: pregúntame por métricas, corrígeme el estilo, cuéntame qué hiciste hoy o dime qué publicar.\n\nMándame links o reenvíame posts y los uso como inspiración. Las fotos que me mandes las puedo usar en tus tweets.\n\nAtajos:\n/estado\n/pausa [x|linkedin]\n/sigue [x|linkedin]\n/ya x · /ya linkedin · /ya radar",
       );
   }
 
   // Reenviado o solo links: es algo que Diego leyó, va a fuentes sin gastar Claude.
   const soloLinks = texto && texto.replace(/https?:\/\/\S+/g, "").trim() === "";
-  if (m.forward_origin || soloLinks) {
+  if (!foto && (m.forward_origin || soloLinks)) {
     const o = m.forward_origin;
     const autor = o?.sender_user?.username ?? o?.chat?.username ?? o?.chat?.title ?? null;
     await env.DB.prepare("INSERT INTO fuentes (fecha, origen, externo_id, autor, url, texto) VALUES (?, 'telegram', ?, ?, ?, ?)")
@@ -94,10 +109,11 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
       .run();
     return reaccionar(env, m, "👌");
   }
-  if (!texto) return responder(env, "Por ahora entiendo texto y links.");
+  if (!texto) return responder(env, "Por ahora entiendo texto, links y fotos.");
 
   // Conversación: la contesta el agente de chat en GitHub Actions (~1 min).
-  await env.DB.prepare("INSERT INTO chat (fecha, rol, texto, respondido) VALUES (?, 'diego', ?, 0)").bind(new Date().toISOString(), texto).run();
+  const conFoto = foto ? `${texto}\n[adjuntó una foto: tg:${foto.file_id}]` : texto;
+  await env.DB.prepare("INSERT INTO chat (fecha, rol, texto, respondido) VALUES (?, 'diego', ?, 0)").bind(new Date().toISOString(), conFoto).run();
   await reaccionar(env, m, "👀");
   await disparar(env, "chat.yml");
 }

@@ -56,7 +56,7 @@ ${materialFijo}
 </material_reciente>
 
 <lo_que_diego_lee>
-Links que mandó por Telegram, sus bookmarks y likes de X, y lo último de las cuentas que sigue de cerca. Úsalo como inspiración y para reaccionar con opinión propia; nunca copies ni lo presentes como experiencia de Diego.
+Links y fotos que mandó por Telegram (telegram_foto: la url tg:... se puede usar como imagen), sus bookmarks y likes de X, y lo último de las cuentas que sigue de cerca (la URL trae el id para citar). Úsalo como inspiración y para reaccionar con opinión propia; nunca copies ni lo presentes como experiencia de Diego.
 ${fuentes.map((f) => `- [${f.origen}${f.autor ? ` @${f.autor}` : ""} ${f.fecha.slice(0, 10)}] ${f.texto.replace(/\s+/g, " ").slice(0, 400)}${f.url ? ` (${f.url})` : ""}${f.metricas ? ` ${f.metricas}` : ""}`).join("\n") || "(nada todavía)"}
 </lo_que_diego_lee>
 

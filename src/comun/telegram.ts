@@ -1,10 +1,12 @@
 // Avisos a Diego por Telegram. Texto plano: sin parse_mode no hay nada que escapar.
+import { leerConfig } from "./memoria.ts";
 
 const LIMITE = 4000; // Telegram corta en 4096
 
 export async function avisar(texto: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  // El chat id lo guarda el Worker en D1 cuando Diego vincula el bot.
+  const chatId = process.env.TELEGRAM_CHAT_ID || (token ? await leerConfig("telegram_chat_id") : "");
   if (!token || !chatId) return console.log(`[telegram desactivado] ${texto}`);
 
   for (let i = 0; i < texto.length; i += LIMITE) {

@@ -52,16 +52,49 @@ async function x<T>(ruta: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function publicarTweet(texto: string, respondeA?: string): Promise<string> {
-  const cuerpo = respondeA ? { text: texto, reply: { in_reply_to_tweet_id: respondeA } } : { text: texto };
+export type ParteHilo = { texto: string; imagen?: string };
+
+// Sube una imagen (URL https o "tg:<file_id>" de una foto que Diego mandó por Telegram).
+export async function subirImagen(origen: string): Promise<string> {
+  const res = await fetch(await urlDescarga(origen));
+  if (!res.ok) throw new Error(`No pude bajar la imagen (${res.status})`);
+  const tipo = res.headers.get("content-type") ?? "";
+  if (!/^image\/(jpeg|png|webp|gif)/.test(tipo)) throw new Error(`No es una imagen soportada: ${tipo || "sin tipo"}`);
+  const datos = await res.arrayBuffer();
+  if (datos.byteLength > 5 * 1024 * 1024) throw new Error("La imagen pasa de 5 MB");
+
+  const form = new FormData();
+  form.append("media", new Blob([datos], { type: tipo }));
+  form.append("media_category", tipo.includes("gif") ? "tweet_gif" : "tweet_image");
+  const r = await fetch(`${API}/media/upload`, { method: "POST", headers: { Authorization: `Bearer ${await token()}` }, body: form });
+  if (!r.ok) throw new Error(`X media/upload → ${r.status}: ${await r.text()}`);
+  return ((await r.json()) as { data: { id: string } }).data.id;
+}
+
+async function urlDescarga(origen: string): Promise<string> {
+  if (!origen.startsWith("tg:")) return origen;
+  const bot = process.env.TELEGRAM_BOT_TOKEN;
+  const res = await fetch(`https://api.telegram.org/bot${bot}/getFile?file_id=${origen.slice(3)}`);
+  const { result } = (await res.json()) as { result?: { file_path: string } };
+  if (!result) throw new Error("Telegram no encontró esa foto");
+  return `https://api.telegram.org/file/bot${bot}/${result.file_path}`;
+}
+
+export async function publicarTweet(texto: string, opciones: { respondeA?: string; citar?: string; imagen?: string } = {}): Promise<string> {
+  const cuerpo: Record<string, unknown> = { text: texto };
+  if (opciones.respondeA) cuerpo.reply = { in_reply_to_tweet_id: opciones.respondeA };
+  if (opciones.citar) cuerpo.quote_tweet_id = opciones.citar;
+  if (opciones.imagen) cuerpo.media = { media_ids: [await subirImagen(opciones.imagen)] };
   const { data } = await x<{ data: { id: string } }>("/tweets", { method: "POST", body: JSON.stringify(cuerpo) });
   return data.id;
 }
 
-// Publica un hilo encadenando respuestas. Devuelve los ids en orden.
-export async function publicarHilo(tweets: string[]): Promise<string[]> {
+// Publica un tweet o un hilo encadenando respuestas. Solo el primero cita. Devuelve los ids en orden.
+export async function publicarHilo(partes: ParteHilo[], citar?: string): Promise<string[]> {
   const ids: string[] = [];
-  for (const t of tweets) ids.push(await publicarTweet(t, ids.at(-1)));
+  for (const [i, p] of partes.entries()) {
+    ids.push(await publicarTweet(p.texto, { respondeA: ids.at(-1), citar: i === 0 ? citar : undefined, imagen: p.imagen }));
+  }
   return ids;
 }
 
