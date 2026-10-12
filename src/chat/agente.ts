@@ -155,7 +155,7 @@ const respuesta =
   (await correrAgente({
     prompt,
     herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar],
-    effort: "medium",
+    effort: "low",
   })) || "Tuve un problema procesando tu mensaje. Revisa el log del workflow chat en GitHub Actions.";
 
 await avisar(respuesta);

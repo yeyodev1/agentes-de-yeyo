@@ -28,11 +28,19 @@ jobs:
       X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
       X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # El chat prioriza velocidad; los posts los sigue escribiendo Opus.
+      CLAUDE_MODEL: claude-sonnet-5-5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+      # node_modules guardado entre ejecuciones: evita ~8 s de npm ci en cada disparo.
+      - id: modulos
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: modulos-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.modulos.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run chat
