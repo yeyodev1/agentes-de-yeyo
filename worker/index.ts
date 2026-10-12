@@ -9,6 +9,7 @@ interface Env {
   TELEGRAM_WEBHOOK_SECRET: string;
   TELEGRAM_VINCULO: string; // código del link t.me/<bot>?start=<código> que vincula a Diego
   TELEGRAM_CHAT_ID?: string;
+  AGENTES_SECRET: string; // los agentes de GitHub Actions leen y escriben D1 por /api/sql
 }
 
 type Mensaje = {
@@ -29,6 +30,7 @@ const X_HASTA = 22;
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    if (req.method === "POST" && url.pathname === "/api/sql") return consultaAgentes(req, env);
     if (req.method !== "POST" || url.pathname !== "/telegram") return new Response("ok");
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.TELEGRAM_WEBHOOK_SECRET) {
       return new Response("no", { status: 401 });
@@ -51,6 +53,26 @@ export default {
     if ((hora - X_DESDE) % cada === 0) await disparar(env, "x.yml");
   },
 };
+
+// Puerta de los agentes a la memoria: así no necesitan un token de Cloudflare.
+async function consultaAgentes(req: Request, env: Env): Promise<Response> {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!env.AGENTES_SECRET || !igualSeguro(auth, `Bearer ${env.AGENTES_SECRET}`)) return new Response("no", { status: 401 });
+  const { sql, params = [] } = (await req.json()) as { sql: string; params?: unknown[] };
+  try {
+    const { results } = await env.DB.prepare(sql).bind(...params).all();
+    return Response.json({ results });
+  } catch (e) {
+    return Response.json({ error: String(e) }, { status: 400 });
+  }
+}
+
+function igualSeguro(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let dif = 0;
+  for (let i = 0; i < a.length; i++) dif |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return dif === 0;
+}
 
 async function atender(m: Mensaje, env: Env): Promise<void> {
   const texto = (m.text ?? m.caption ?? "").trim();

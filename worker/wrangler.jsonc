@@ -2,7 +2,9 @@
   "name": "cerebro-yeyo",
   "account_id": "9f8ec1f811c0bbb8177ca20665b2f72b", // yeyo workspace (cuenta personal)
   "main": "index.ts",
-  "workers_dev": true, // URL pública solo para el webhook de Telegram (protegido con secret)
+  "workers_dev": false,
+  // Webhook de Telegram y /api/sql de los agentes, ambos protegidos con secret.
+  "routes": [{ "pattern": "agentes.yeyo.dev", "custom_domain": true }],
   "observability": { "enabled": true },
   "compatibility_date": "2026-09-01",
   "triggers": {
@@ -14,10 +16,10 @@
     {
       "binding": "DB",
       "database_name": "cerebro-yeyo",
-      "database_id": "PENDIENTE", // lo llena `wrangler d1 create cerebro-yeyo`
+      "database_id": "a4d2344f-3114-4ba2-bbee-855e4c9fb0dd",
       "migrations_dir": "migrations"
     }
   ]
   // Secrets (wrangler secret put): GH_TOKEN_DISPARO, TELEGRAM_BOT_TOKEN,
-  // TELEGRAM_WEBHOOK_SECRET, TELEGRAM_VINCULO
+  // TELEGRAM_WEBHOOK_SECRET, TELEGRAM_VINCULO, AGENTES_SECRET
 }

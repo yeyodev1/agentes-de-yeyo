@@ -23,9 +23,8 @@ jobs:
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-      CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-      CF_D1_ID: ${{ vars.CF_D1_ID }}
+      AGENTES_URL: ${{ vars.AGENTES_URL }}
+      AGENTES_SECRET: ${{ secrets.AGENTES_SECRET }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
       LINKEDIN_PERSON_ID: ${{ secrets.LINKEDIN_PERSON_ID }}

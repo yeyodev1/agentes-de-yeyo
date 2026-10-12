@@ -1,5 +1,5 @@
 // Memoria compartida: la base D1 del Worker "cerebro-yeyo", usada desde
-// GitHub Actions por la API REST de Cloudflare.
+// GitHub Actions a través del endpoint /api/sql del propio Worker.
 
 export type Red = "linkedin" | "x";
 
@@ -25,15 +25,14 @@ function requerido(nombre: string): string {
 }
 
 export async function sql<T = Record<string, unknown>>(consulta: string, params: unknown[] = []): Promise<T[]> {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${requerido("CF_ACCOUNT_ID")}/d1/database/${requerido("CF_D1_ID")}/query`;
-  const res = await fetch(url, {
+  const res = await fetch(`${requerido("AGENTES_URL")}/api/sql`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${requerido("CF_API_TOKEN")}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${requerido("AGENTES_SECRET")}`, "Content-Type": "application/json" },
     body: JSON.stringify({ sql: consulta, params }),
   });
-  const cuerpo = (await res.json()) as { success: boolean; errors: unknown[]; result?: { results: T[] }[] };
-  if (!res.ok || !cuerpo.success) throw new Error(`D1 ${res.status}: ${JSON.stringify(cuerpo.errors)}`);
-  return cuerpo.result?.[0]?.results ?? [];
+  const cuerpo = (await res.json().catch(() => ({}))) as { results?: T[]; error?: string };
+  if (!res.ok) throw new Error(`Memoria ${res.status}: ${cuerpo.error ?? "sin detalle"}`);
+  return cuerpo.results ?? [];
 }
 
 export async function leerConfig(clave: string, porDefecto = ""): Promise<string> {
