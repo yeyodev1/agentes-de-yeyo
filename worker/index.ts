@@ -37,7 +37,7 @@ export default {
     }
     const update = (await req.json()) as { message?: Mensaje };
     // Responder rápido a Telegram; el trabajo sigue en segundo plano.
-    if (update.message) ctx.waitUntil(atender(update.message, env).catch((e) => responder(env, `Error en el Worker: ${e}`)));
+    if (update.message) ctx.waitUntil(atender(update.message, env).catch((e) => responder(env, `⚠️ Algo falló en el Worker: ${escapar(String(e))}`)));
     return new Response("ok");
   },
 
@@ -83,7 +83,7 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
     if (texto !== `/start ${env.TELEGRAM_VINCULO}`) return;
     await guardarConfig(env, "telegram_chat_id", String(m.chat.id));
     env.TELEGRAM_CHAT_ID = String(m.chat.id);
-    return responder(env, "Listo Diego, quedé vinculado contigo 🤝 Escribe /ayuda para ver qué puedo hacer.");
+    return responder(env, "🤝 <b>Listo Diego, quedé vinculado contigo.</b>\n\nDesde ahora solo te hago caso a ti 🔒\nEscribe /ayuda para ver todo lo que puedo hacer 🚀");
   }
   if (String(m.from?.id) !== env.TELEGRAM_CHAT_ID) return; // solo Diego
 
@@ -103,22 +103,19 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
     case "/sigue": {
       const valor = comando.startsWith("/pausa") ? "1" : "0";
       for (const r of redes) await guardarConfig(env, `pausa_${r}`, valor);
-      return responder(env, `${valor === "1" ? "⏸️ Pausado" : "▶️ Activo"}: ${redes.join(" y ")}`);
+      return responder(env, `${valor === "1" ? "⏸️ <b>En pausa</b>" : "▶️ <b>Activo de nuevo</b>"}: ${redes.map(nombreRed).join(" y ")}`);
     }
     case "/ya": {
       const wf = { x: "x.yml", linkedin: "linkedin.yml", radar: "radar.yml" }[arg];
-      if (!wf) return responder(env, "Uso: /ya x · /ya linkedin · /ya radar");
+      if (!wf) return responder(env, "🤔 Dime a quién lanzo:\n\n🐦 /ya x\n💼 /ya linkedin\n📡 /ya radar");
       await disparar(env, wf, arg === "radar" ? {} : { forzar: "true" });
-      return responder(env, `🚀 Lancé ${arg}. En 1 a 3 minutos te aviso.`);
+      return responder(env, `🚀 <b>Lancé ${nombreRed(arg)}</b>\nEn 1 a 3 minutos te aviso qué salió ⏳`);
     }
     case "/estado":
       return responder(env, await estado(env));
     case "/start":
     case "/ayuda":
-      return responder(
-        env,
-        "Háblame normal: pregúntame por métricas, corrígeme el estilo, cuéntame qué hiciste hoy o dime qué publicar.\n\nMándame links o reenvíame posts y los uso como inspiración. Las fotos que me mandes las puedo usar en tus tweets.\n\nAtajos:\n/estado\n/pausa [x|linkedin]\n/sigue [x|linkedin]\n/ya x · /ya linkedin · /ya radar",
-      );
+      return responder(env, AYUDA);
   }
 
   // Reenviado o solo links: es algo que Diego leyó, va a fuentes sin gastar Claude.
@@ -131,7 +128,7 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
       .run();
     return reaccionar(env, m, "👌");
   }
-  if (!texto) return responder(env, "Por ahora entiendo texto, links y fotos.");
+  if (!texto) return responder(env, "🙈 Por ahora entiendo texto, links y fotos. Notas de voz pronto.");
 
   // Conversación: la contesta el agente de chat en GitHub Actions (~1 min).
   const conFoto = foto ? `${texto}\n[adjuntó una foto: tg:${foto.file_id}]` : texto;
@@ -148,13 +145,17 @@ async function estado(env: Env): Promise<string> {
   const { results: ultimos } = await env.DB.prepare(
     "SELECT red, fecha, substr(texto, 1, 80) AS inicio FROM posts WHERE borrado = 0 ORDER BY fecha DESC LIMIT 4",
   ).all<{ red: string; fecha: string; inicio: string }>();
+  const hora = (iso: string) =>
+    new Date(iso).toLocaleString("es-EC", { timeZone: "America/Guayaquil", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   return [
-    `LinkedIn: ${c.pausa_linkedin === "1" ? "⏸️ pausado" : "▶️ diario 8:30"}`,
-    `X: ${c.pausa_x === "1" ? "⏸️ pausado" : `▶️ cada ${c.x_cada_horas} h (tope ${c.x_max_dia}/día)`}`,
-    `Radar X: ${c.radar_x}`,
+    "📊 <b>Estado de tus agentes</b>",
     "",
-    "Últimos posts:",
-    ...ultimos.map((p) => `• ${p.red} ${p.fecha.slice(5, 16).replace("T", " ")} UTC · ${p.inicio}…`),
+    `💼 <b>LinkedIn</b>: ${c.pausa_linkedin === "1" ? "⏸️ en pausa" : "✅ activo · diario 8:30 am"}`,
+    `🐦 <b>X</b>: ${c.pausa_x === "1" ? "⏸️ en pausa" : `✅ activo · cada ${c.x_cada_horas} h (máx ${c.x_max_dia} al día)`}`,
+    `📡 <b>Radar</b>: ${escapar(c.radar_x.split(",").map((u) => `@${u.trim()}`).join(", "))}`,
+    "",
+    "🕐 <b>Últimos posts</b>",
+    ...(ultimos.length ? ultimos.map((p) => `${p.red === "x" ? "🐦" : "💼"} ${hora(p.fecha)} · <i>${escapar(p.inicio)}…</i>`) : ["Todavía nada 🤷🏾‍♂️"]),
   ].join("\n");
 }
 
@@ -192,7 +193,30 @@ async function telegram(env: Env, metodo: string, cuerpo: unknown): Promise<void
   if (!res.ok) console.error(`Telegram ${metodo} ${res.status}: ${await res.text()}`);
 }
 
-const responder = (env: Env, text: string) => telegram(env, "sendMessage", { chat_id: env.TELEGRAM_CHAT_ID, text });
+// Mensajes fijos del Worker en HTML de Telegram: todo texto variable pasa por escapar().
+const responder = (env: Env, text: string) =>
+  telegram(env, "sendMessage", { chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+
+const escapar = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const nombreRed = (r: string) => ({ x: "🐦 X", linkedin: "💼 LinkedIn", radar: "📡 el radar" })[r] ?? r;
+
+const AYUDA = `👋🏾 <b>Soy tu agente de redes</b>
+
+💬 <b>Háblame normal</b>
+• "cómo van mis tweets esta semana?"
+• "hoy terminé el MCP del equipo" → lo guardo como material
+• "no uses tanto la palabra X" → aprendo la regla
+• "publica esto en X: …"
+
+🔗 <b>Mándame links o reenvíame posts</b> y los uso como inspiración
+📸 <b>Mándame fotos</b> y las pongo en tus tweets
+
+⚡ <b>Atajos</b>
+📊 /estado · cómo van los agentes
+⏸️ /pausa x · /pausa linkedin · /pausa (todo)
+▶️ /sigue x · /sigue linkedin · /sigue (todo)
+🚀 /ya x · /ya linkedin · /ya radar`;
 
 const reaccionar = (env: Env, m: Mensaje, emoji: string) =>
   telegram(env, "setMessageReaction", { chat_id: m.chat.id, message_id: m.message_id, reaction: [{ type: "emoji", emoji }] });

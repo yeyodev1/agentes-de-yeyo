@@ -117,12 +117,12 @@ if (publicado) {
   console.log(`\n${DRY_RUN ? "[DRY RUN] " : ""}${final.texto}`);
   if (!DRY_RUN) {
     const { username } = await yo();
-    await avisar(`🐦 Publiqué en X\n${urlTweet(username, final.ids[0])}\n\n${final.texto}\n\nPara bajarlo: "borra el último tweet"`);
+    await avisar(`🐦✅ Publiqué en X${final.ids.length > 1 ? ` (hilo de ${final.ids.length} 🧵)` : ""}\n🔗 ${urlTweet(username, final.ids[0])}\n\n${final.texto}\n\n🗑️ Si no te gusta dime "borra el último tweet"`);
   }
 } else if (decision) {
   console.log(decision);
 } else {
   console.error(`El agente terminó sin decidir.\n${resultado}`);
-  await avisar(`⚠️ El agente de X terminó sin publicar ni explicar por qué.\n\n${resultado.slice(0, 1500)}`);
+  await avisar(`⚠️🐦 El agente de X terminó sin publicar ni explicar por qué.\n\n${resultado.slice(0, 1500)}`);
   process.exit(1);
 }

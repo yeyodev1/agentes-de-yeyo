@@ -61,13 +61,13 @@ const resultado = await correrAgente({ prompt, herramientas: [publicar] });
 
 if (!publicado) {
   console.error(`El agente terminó sin publicar.\n${resultado}`);
-  await avisar(`⚠️ El agente de LinkedIn terminó sin publicar.\n\n${resultado.slice(0, 1500)}`);
+  await avisar(`⚠️💼 El agente de LinkedIn terminó sin publicar.\n\n${resultado.slice(0, 1500)}`);
   process.exit(1);
 }
 
 const final: { urn: string; texto: string } = publicado;
 console.log(`\n${DRY_RUN ? "[DRY RUN] " : ""}Post (${final.urn}):\n\n${final.texto}`);
-if (!DRY_RUN) await avisar(`✅ Publiqué en LinkedIn\n${urlPost(final.urn)}\n\n${final.texto}\n\nPara bajarlo: "borra el post de LinkedIn"`);
+if (!DRY_RUN) await avisar(`💼✅ Publiqué en LinkedIn\n🔗 ${urlPost(final.urn)}\n\n${final.texto}\n\n🗑️ Si no te gusta dime "borra el post de LinkedIn"`);
 
 // El token de LinkedIn dura 60 días y no se puede refrescar solo:
 // deja un warning visible en GitHub Actions la última semana.

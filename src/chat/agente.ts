@@ -148,7 +148,8 @@ Cómo trabajar:
 - Cada vez que Diego corrija el estilo o diga qué le gusta o no, guárdalo con guardar_aprendizaje. Cada vez que cuente algo que hizo o le pasó, guárdalo con guardar_material. Así los agentes mejoran solos.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
-- Tu respuesta final es lo que le llega por Telegram: texto plano, corto, en español, como un colega. Sin markdown, sin ¿ ni ¡.`;
+- Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
+- Usa emojis para que se lea vivo y fácil de escanear: uno al inicio de cada idea o dato (📊 métricas, ✅ hecho, 🐦 X, 💼 LinkedIn, 🧠 aprendí, 📝 guardado, ⚠️ ojo, 🚀 lanzado). Para varios datos, una línea por dato empezando con su emoji. Nada de markdown (*, #, **): Telegram lo muestra tal cual.`;
 
 const respuesta =
   (await correrAgente({
