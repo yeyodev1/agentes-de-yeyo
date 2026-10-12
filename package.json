@@ -1,0 +1,29 @@
+{
+  "name": "agentes-de-yeyo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "linkedin": "tsx --env-file-if-exists=.env src/linkedin/agente.ts",
+    "x": "tsx --env-file-if-exists=.env src/x/agente.ts",
+    "radar": "tsx --env-file-if-exists=.env src/x/radar.ts",
+    "chat": "tsx --env-file-if-exists=.env src/chat/agente.ts",
+    "prueba:linkedin": "DRY_RUN=1 tsx --env-file-if-exists=.env src/linkedin/agente.ts",
+    "prueba:x": "DRY_RUN=1 tsx --env-file-if-exists=.env src/x/agente.ts",
+    "token:linkedin": "tsx --env-file-if-exists=.env scripts/token-linkedin.ts",
+    "token:x": "tsx --env-file-if-exists=.env scripts/token-x.ts",
+    "migrar": "tsx --env-file-if-exists=.env scripts/migrar-historial.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.296",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261011.1",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.149.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "cerebro-yeyo",
+  "account_id": "9f8ec1f811c0bbb8177ca20665b2f72b", // yeyo workspace (cuenta personal)
+  "main": "index.ts",
+  "workers_dev": true, // URL pública solo para el webhook de Telegram (protegido con secret)
+  "observability": { "enabled": true },
+  "compatibility_date": "2026-09-01",
+  "triggers": {
+    // UTC. Cada hora decide X y radar; 13:30 = 8:30 am Ecuador para LinkedIn.
+    "crons": ["0 * * * *", "30 13 * * *"]
+  },
+  "vars": { "GH_REPO": "yeyodev1/agentes-de-yeyo" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cerebro-yeyo",
+      "database_id": "PENDIENTE", // lo llena `wrangler d1 create cerebro-yeyo`
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Secrets (wrangler secret put): GH_TOKEN_DISPARO, TELEGRAM_BOT_TOKEN,
+  // TELEGRAM_WEBHOOK_SECRET, TELEGRAM_CHAT_ID
+}

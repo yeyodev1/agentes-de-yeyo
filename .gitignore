@@ -1,0 +1,5 @@
+node_modules
+.env
+.wrangler
+# repo viejo: se migra y luego se borra
+agente-para-linkedin/
