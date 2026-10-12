@@ -39,10 +39,10 @@ export async function contexto(red: Red, { propios = 15, ajenos = 5 } = {}): Pro
     postsRecientes(red, propios),
     postsRecientes(otra, ajenos),
     sql<Fuente>(
-      "SELECT fecha, origen, autor, url, texto, metricas FROM fuentes WHERE fecha >= ? AND origen != 'github' ORDER BY fecha DESC LIMIT 60",
+      "SELECT fecha, origen, autor, url, texto, metricas FROM fuentes WHERE fecha >= ? AND origen NOT IN ('github', 'vercel') ORDER BY fecha DESC LIMIT 60",
       [hace4dias],
     ),
-    sql<Fuente>("SELECT fecha, origen, autor, url, texto, metricas FROM fuentes WHERE origen = 'github' AND fecha >= ? ORDER BY fecha DESC LIMIT 30", [hace3dias]),
+    sql<Fuente>("SELECT fecha, origen, autor, url, texto, metricas FROM fuentes WHERE origen IN ('github', 'vercel') AND fecha >= ? ORDER BY fecha DESC LIMIT 40", [hace3dias]),
     leerConfig("github_mencionables", MENCIONABLES_POR_DEFECTO),
   ]);
   const publicos = new Set(mencionables.split(",").map((r) => r.trim().toLowerCase()));
@@ -83,7 +83,7 @@ ${fuentes.map((f) => `- [${f.origen}${f.autor ? ` @${f.autor}` : ""} ${f.fecha.s
 </lo_que_diego_lee>
 
 <lo_que_diego_programa>
-Su actividad en GitHub de los últimos 3 días: material real de build in public (qué está construyendo, qué arregló, qué lanzó). Cuéntalo en lenguaje humano, no como lista de commits. Los proyectos de cliente se cuentan sin nombre y sin detalles que lo identifiquen ("una tienda en línea para un cliente").
+Su actividad de los últimos 3 días en GitHub (commits, repos) y Vercel (🚀 deploys a producción, o sea cosas que ya están en vivo): material real de build in public (qué está construyendo, qué arregló, qué lanzó). Cuéntalo en lenguaje humano, no como lista de commits. Los proyectos de cliente se cuentan sin nombre y sin detalles que lo identifiquen ("una tienda en línea para un cliente").
 ${github.map((g) => `- [${g.fecha.slice(0, 16)}] ${lineaGithub(g)}`).join("\n") || "(sin actividad reciente)"}
 </lo_que_diego_programa>
 

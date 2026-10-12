@@ -116,6 +116,36 @@ const borrar = tool(
   },
 );
 
+// Consultas en vivo, solo lectura (GET). Las respuestas se recortan para no llenar el contexto.
+async function leerApi(url: string, token: string | undefined): Promise<string> {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", "User-Agent": "pana-agente-yeyo", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  const texto = await res.text();
+  return `${res.status} ${texto.slice(0, 15_000)}${texto.length > 15_000 ? "…(recortado)" : ""}`;
+}
+
+const github = tool(
+  "consultar_github",
+  `GET a la API REST de GitHub (solo lectura) para preguntas sobre el código y la actividad de Diego (usuario yeyodev1). Ejemplos de ruta:
+/users/yeyodev1/repos?sort=pushed&per_page=20 · /repos/yeyodev1/<repo>/commits?since=2026-10-01T00:00:00Z&per_page=30 · /repos/yeyodev1/<repo>/readme (contenido en base64) · /repos/yeyodev1/<repo>/pulls?state=all · /search/commits?q=author:yeyodev1+committer-date:>2026-10-05`,
+  { ruta: z.string().regex(/^\//, "Empieza con /") },
+  async ({ ruta }) => ok(await leerApi(`https://api.github.com${ruta}`, process.env.GITHUB_TOKEN)),
+);
+
+const vercel = tool(
+  "consultar_vercel",
+  `GET a la API de Vercel (solo lectura) del equipo de Diego para preguntas sobre sus proyectos y deploys. El teamId se agrega solo. Ejemplos de ruta:
+/v9/projects?limit=50 · /v6/deployments?limit=20&target=production · /v6/deployments?projectId=<id>&state=ERROR · /v13/deployments/<id o url>`,
+  { ruta: z.string().regex(/^\/v\d+\//, "Empieza con /v<n>/") },
+  async ({ ruta }) => {
+    if (!process.env.VERCEL_TOKEN) return error("Vercel todavía no está conectado (falta VERCEL_TOKEN).");
+    const url = new URL(`https://api.vercel.com${ruta}`);
+    url.searchParams.set("teamId", process.env.VERCEL_TEAM_ID ?? "");
+    return ok(await leerApi(url.toString(), process.env.VERCEL_TOKEN));
+  },
+);
+
 const WORKFLOWS = { linkedin: "linkedin.yml", x: "x.yml", radar: "radar.yml" } as const;
 const lanzar = tool(
   "lanzar_agente",
@@ -176,6 +206,7 @@ Cómo trabajar:
 - Responde a los mensajes nuevos. Si te pide algo, hazlo con tus herramientas y confirma qué hiciste.
 - Cada vez que Diego corrija el estilo o diga qué le gusta o no, guárdalo con guardar_aprendizaje. Cada vez que cuente algo que hizo o le pasó, guárdalo con guardar_material. Así los agentes mejoran solos.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
+- Si pregunta por su código, repos, commits o deploys, usa consultar_github y consultar_vercel en vivo (a él sí le das los nombres reales de los proyectos). Si de ahí sale algo bueno para contar, ofrécele guardarlo como material.
 - Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
@@ -184,7 +215,7 @@ Cómo trabajar:
 const respuesta =
   (await correrAgente({
     prompt,
-    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar],
+    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar, github, vercel],
     effort: "low",
   })) || "Tuve un problema procesando tu mensaje. Revisa el log del workflow chat en GitHub Actions.";
 

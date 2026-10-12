@@ -5,6 +5,8 @@ interface Env {
   DB: D1Database;
   GH_REPO: string;
   GH_USUARIO: string; // cuya actividad pública se lee como material
+  VERCEL_TOKEN?: string; // deploys a producción como material
+  VERCEL_TEAM_ID: string;
   GH_TOKEN_DISPARO: string;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
@@ -34,7 +36,7 @@ export default {
     if (req.method === "POST" && url.pathname === "/api/sql") return consultaAgentes(req, env);
     if (req.method === "POST" && url.pathname === "/api/github") {
       if (!igualSeguro(req.headers.get("Authorization") ?? "", `Bearer ${env.AGENTES_SECRET}`)) return new Response("no", { status: 401 });
-      return Response.json(await sincronizarGithub(env));
+      return Response.json({ github: await sincronizarGithub(env), vercel: await sincronizarVercel(env) });
     }
     if (req.method !== "POST" || url.pathname !== "/telegram") return new Response("ok");
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.TELEGRAM_WEBHOOK_SECRET) {
@@ -52,6 +54,7 @@ export default {
       return;
     }
     await sincronizarGithub(env).catch((e) => console.error("GitHub:", e));
+    await sincronizarVercel(env).catch((e) => console.error("Vercel:", e));
     const hora = (new Date(evento.scheduledTime).getUTCHours() + 19) % 24; // UTC-5, Ecuador no tiene horario de verano
     if (RADAR_HORAS.includes(hora)) await disparar(env, "radar.yml");
     if ((await config(env, "pausa_x")) === "1" || hora < X_DESDE || hora > X_HASTA) return;
@@ -98,6 +101,31 @@ async function sincronizarGithub(env: Env): Promise<{ repos: number }> {
   }
   await guardarConfig(env, "github_ultimo", ahora);
   return { repos: repos.length };
+}
+
+// Cada hora: los deploys a producción que salieron bien ("hoy subí X a producción").
+type Deploy = { uid: string; name: string; url: string; created: number; meta?: { githubCommitMessage?: string; githubCommitRepo?: string } };
+
+async function sincronizarVercel(env: Env): Promise<{ deploys: number }> {
+  if (!env.VERCEL_TOKEN) return { deploys: 0 };
+  const desde = Number(await config(env, "vercel_ultimo")) || Date.now() - 24 * 3_600_000;
+  const res = await fetch(
+    `https://api.vercel.com/v6/deployments?teamId=${env.VERCEL_TEAM_ID}&target=production&state=READY&since=${desde}&limit=50`,
+    { headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` } },
+  );
+  if (!res.ok) throw new Error(`Vercel ${res.status}`);
+  const { deployments } = (await res.json()) as { deployments: Deploy[] };
+  // Un registro por proyecto: varios deploys seguidos del mismo proyecto son una sola noticia.
+  const porProyecto = new Map<string, Deploy[]>();
+  for (const d of deployments) porProyecto.set(d.name, [...(porProyecto.get(d.name) ?? []), d]);
+  for (const [proyecto, ds] of porProyecto) {
+    const mensajes = [...new Set(ds.map((d) => d.meta?.githubCommitMessage?.split("\n")[0]).filter(Boolean))].slice(0, 8);
+    await env.DB.prepare("INSERT OR IGNORE INTO fuentes (fecha, origen, externo_id, autor, url, texto) VALUES (?, 'vercel', ?, ?, ?, ?)")
+      .bind(new Date(ds[0].created).toISOString(), ds[0].uid, ds[0].meta?.githubCommitRepo ?? proyecto, `https://${ds[0].url}`, `🚀 ${ds.length} deploy(s) a producción\n${mensajes.map((m) => `- ${m}`).join("\n")}`)
+      .run();
+  }
+  if (deployments.length) await guardarConfig(env, "vercel_ultimo", String(Math.max(...deployments.map((d) => d.created)) + 1));
+  return { deploys: deployments.length };
 }
 
 async function gh<T>(env: Env, ruta: string): Promise<T> {
