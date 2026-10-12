@@ -4,6 +4,7 @@
 interface Env {
   DB: D1Database;
   GH_REPO: string;
+  GH_USUARIO: string; // cuya actividad pública se lee como material
   GH_TOKEN_DISPARO: string;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
@@ -31,6 +32,10 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/api/sql") return consultaAgentes(req, env);
+    if (req.method === "POST" && url.pathname === "/api/github") {
+      if (!igualSeguro(req.headers.get("Authorization") ?? "", `Bearer ${env.AGENTES_SECRET}`)) return new Response("no", { status: 401 });
+      return Response.json(await sincronizarGithub(env));
+    }
     if (req.method !== "POST" || url.pathname !== "/telegram") return new Response("ok");
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.TELEGRAM_WEBHOOK_SECRET) {
       return new Response("no", { status: 401 });
@@ -46,6 +51,7 @@ export default {
       if ((await config(env, "pausa_linkedin")) !== "1") await disparar(env, "linkedin.yml");
       return;
     }
+    await sincronizarGithub(env).catch((e) => console.error("GitHub:", e));
     const hora = (new Date(evento.scheduledTime).getUTCHours() + 19) % 24; // UTC-5, Ecuador no tiene horario de verano
     if (RADAR_HORAS.includes(hora)) await disparar(env, "radar.yml");
     if ((await config(env, "pausa_x")) === "1" || hora < X_DESDE || hora > X_HASTA) return;
@@ -53,6 +59,54 @@ export default {
     if ((hora - X_DESDE) % cada === 0) await disparar(env, "x.yml");
   },
 };
+
+// Cada hora: lo que Diego programó (actividad pública de GitHub) entra como fuente.
+// No usa Claude; los agentes deciden después si vale la pena contarlo.
+type EventoGh = { type: string; created_at: string; repo: { name: string }; payload: { ref_type?: string; action?: string; pull_request?: { title?: string } } };
+const MAX_REPOS = 8; // los Workers tienen límite de subrequests por ejecución
+
+async function sincronizarGithub(env: Env): Promise<{ repos: number }> {
+  const desde = (await config(env, "github_ultimo")) ?? new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const ahora = new Date().toISOString();
+  const eventos = await gh<EventoGh[]>(env, `/users/${env.GH_USUARIO}/events/public?per_page=100`);
+  const porRepo = new Map<string, string[]>();
+  for (const e of eventos.filter((e) => e.created_at > desde)) {
+    const notas = porRepo.get(e.repo.name) ?? [];
+    if (e.type === "CreateEvent" && e.payload.ref_type === "repository") notas.push("🆕 creó el repo");
+    if (e.type === "PublicEvent") notas.push("🌍 lo hizo público");
+    if (e.type === "PullRequestEvent" && e.payload.action) notas.push(`PR ${e.payload.action}${e.payload.pull_request?.title ? `: ${e.payload.pull_request.title}` : ""}`);
+    if (e.type === "PushEvent" && !notas.includes("push")) notas.push("push");
+    porRepo.set(e.repo.name, notas);
+  }
+
+  const repos = [...porRepo].slice(0, MAX_REPOS);
+  for (const [repo, notas] of repos) {
+    const commits = notas.includes("push")
+      ? await gh<{ commit: { message: string } }[]>(env, `/repos/${repo}/commits?since=${desde}&per_page=15`).catch(() => [])
+      : [];
+    const info = await gh<{ description: string | null; language: string | null; html_url: string }>(env, `/repos/${repo}`).catch(() => null);
+    const lineas = [
+      ...notas.filter((n) => n !== "push"),
+      ...commits.map((c) => `- ${c.commit.message.split("\n")[0].slice(0, 140)}`),
+    ];
+    if (!lineas.length) continue;
+    const cabecera = `${commits.length} commits${info?.language ? ` · ${info.language}` : ""}`;
+    // La descripción va aparte: en repos de clientes suele traer el nombre del cliente.
+    await env.DB.prepare("INSERT OR IGNORE INTO fuentes (fecha, origen, externo_id, autor, url, texto, metricas) VALUES (?, 'github', ?, ?, ?, ?, ?)")
+      .bind(ahora, `${repo}@${ahora}`, repo, info?.html_url ?? `https://github.com/${repo}`, `${cabecera}\n${lineas.join("\n")}`, JSON.stringify({ descripcion: info?.description ?? null }))
+      .run();
+  }
+  await guardarConfig(env, "github_ultimo", ahora);
+  return { repos: repos.length };
+}
+
+async function gh<T>(env: Env, ruta: string): Promise<T> {
+  const res = await fetch(`https://api.github.com${ruta}`, {
+    headers: { Authorization: `Bearer ${env.GH_TOKEN_DISPARO}`, Accept: "application/vnd.github+json", "User-Agent": "cerebro-yeyo" },
+  });
+  if (!res.ok) throw new Error(`GitHub ${res.status} en ${ruta.split("?")[0]}`);
+  return (await res.json()) as T;
+}
 
 // Puerta de los agentes a la memoria: así no necesitan un token de Cloudflare.
 async function consultaAgentes(req: Request, env: Env): Promise<Response> {

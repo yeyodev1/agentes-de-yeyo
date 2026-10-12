@@ -52,7 +52,7 @@ const prompt = `Hoy es ${hoy()}. Escribe y publica el post de LinkedIn de hoy. T
 ${await contexto("linkedin")}
 
 Cómo hacerlo:
-1. Elige el ángulo. Prioriza lo más nuevo de <material_reciente> que todavía no esté contado en los posts recientes de LinkedIn. Si ya se contó todo, usa el contexto fijo de <voz> desde un ángulo que no se haya usado, o reacciona con experiencia propia a algo de <lo_que_diego_lee>. Solo hechos que estén en estas fuentes: no inventes cifras, clientes, anécdotas ni resultados.
+1. Elige el ángulo. Prioriza lo más nuevo de <material_reciente> y de <lo_que_diego_programa> (lo que construyó estos días en GitHub) que todavía no esté contado en los posts recientes de LinkedIn. Si ya se contó todo, usa el contexto fijo de <voz> desde un ángulo que no se haya usado, o reacciona con experiencia propia a algo de <lo_que_diego_lee>. Solo hechos que estén en estas fuentes: no inventes cifras, clientes, anécdotas ni resultados.
 2. Escoge un gancho y una estructura distintos a los del último post.
 3. Escribe el post siguiendo <voz> y <aprendizajes> al pie de la letra.
 4. Publícalo con publicar_post y termina.`;

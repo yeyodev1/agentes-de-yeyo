@@ -21,13 +21,13 @@ if (!pendientes.length) {
 const historial = (await sql<Mensaje>("SELECT * FROM chat WHERE id < ? ORDER BY id DESC LIMIT 20", [pendientes[0].id])).reverse();
 
 const ahora = () => new Date().toISOString();
-const CONFIGURABLE = ["pausa_x", "pausa_linkedin", "x_cada_horas", "x_max_dia", "radar_x"] as const;
+const CONFIGURABLE = ["pausa_x", "pausa_linkedin", "x_cada_horas", "x_max_dia", "radar_x", "github_mencionables"] as const;
 
 const consultar = tool(
   "consultar_memoria",
   `Consulta SQL de solo lectura (SQLite/D1) sobre la memoria. Tablas:
 posts(red, externo_id, fecha, texto, gancho, estructura, tema, origen, metricas JSON, borrado)
-fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar', autor, url, texto, metricas)
+fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar'|'github', autor, url, texto, metricas) — en github, autor = repo; si Diego pregunta qué programó, nunca le ocultes nada a él
 material(fecha, texto) · aprendizajes(fecha, red, texto, origen, activo) · config(clave, valor)
 Las claves x_refresh_token y x_access_token son secretas: nunca las muestres.`,
   { consulta: z.string() },
@@ -71,7 +71,7 @@ const material = tool(
 
 const configurar = tool(
   "configurar",
-  `Cambia la configuración. Claves: pausa_x / pausa_linkedin ('1' pausa, '0' sigue), x_cada_horas (1,2,3,4,6,8), x_max_dia (tope diario de tweets), radar_x (usernames de X separados por coma, sin @).`,
+  `Cambia la configuración. Claves: pausa_x / pausa_linkedin ('1' pausa, '0' sigue), x_cada_horas (1,2,3,4,6,8), x_max_dia (tope diario de tweets), radar_x (usernames de X separados por coma, sin @), github_mencionables (repos propios que SÍ se pueden nombrar en público, separados por coma; el resto se cuenta como \"proyecto de cliente\"). Lee el valor actual antes de cambiarlo para no borrar los que ya están.`,
   { clave: z.enum(CONFIGURABLE), valor: z.string() },
   async ({ clave, valor }) => {
     await guardarConfig(clave, valor);
@@ -133,11 +133,12 @@ const lanzar = tool(
 );
 
 // La voz va siempre: si Diego pide un borrador, tiene que sonar a él.
-const [voz, vozX, vozLinkedin, reglas] = await Promise.all([
+const [voz, vozX, vozLinkedin, reglas, materialFijo] = await Promise.all([
   readFile("contenido/voz.md", "utf8"),
   readFile("contenido/voz-x.md", "utf8"),
   readFile("contenido/voz-linkedin.md", "utf8"),
   sql<{ red: string; texto: string }>("SELECT red, texto FROM aprendizajes WHERE activo = 1 ORDER BY fecha DESC LIMIT 40"),
+  readFile("contenido/material.md", "utf8"),
 ]);
 
 const formato = (m: Mensaje) => `[${m.fecha.slice(0, 16)}] ${m.rol === "diego" ? "Diego" : "Tú"}: ${m.texto}`;
@@ -157,6 +158,11 @@ ${vozLinkedin}
 <aprendizajes>
 ${reglas.map((r) => `- [${r.red}] ${r.texto}`).join("\n") || "(todavía ninguno)"}
 </aprendizajes>
+
+<material_base>
+Material que ya estaba cargado desde su Instagram (además de la tabla material, que es lo que te va contando por aquí):
+${materialFijo}
+</material_base>
 
 <conversacion_previa>
 ${historial.map(formato).join("\n") || "(primera conversación)"}

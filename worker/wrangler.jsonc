@@ -11,7 +11,7 @@
     // UTC. Cada hora decide X y radar; 13:30 = 8:30 am Ecuador para LinkedIn.
     "crons": ["0 * * * *", "30 13 * * *"]
   },
-  "vars": { "GH_REPO": "yeyodev1/agentes-de-yeyo" },
+  "vars": { "GH_REPO": "yeyodev1/agentes-de-yeyo", "GH_USUARIO": "yeyodev1" },
   "d1_databases": [
     {
       "binding": "DB",

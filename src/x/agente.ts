@@ -99,7 +99,7 @@ const prompt = `Hoy es ${hoy()}. Eres el agente que maneja el X (Twitter) de Die
 ${await contexto("x", { propios: 30 })}
 
 Cómo hacerlo:
-1. Mira <posts_recientes_x> y sus métricas: qué tipo de tweet funcionó y qué no. Revisa <lo_que_diego_lee> y <material_reciente> para ver qué hay nuevo.
+1. Mira <posts_recientes_x> y sus métricas: qué tipo de tweet funcionó y qué no. Revisa <lo_que_diego_programa>, <lo_que_diego_lee> y <material_reciente> para ver qué hay nuevo. Lo que programó hoy es oro para build in public ("ahorita estoy…", "hoy saqué…").
 2. Decide si vale la pena publicar ahora. Si no hay nada bueno, usa no_publicar.
 3. Si publicas, elige un tipo y un gancho distintos a los de los últimos tweets y escríbelo siguiendo <voz> y <aprendizajes>. Solo hechos reales de las fuentes: no inventes cifras, clientes ni anécdotas. Nunca nombres clientes de Bakano.
 4. Refuerza el tweet cuando sume:
