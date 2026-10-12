@@ -25,6 +25,13 @@ type Mensaje = {
   forward_origin?: { type: string; sender_user?: { username?: string }; chat?: { username?: string; title?: string } };
 };
 
+type Boton = {
+  id: string;
+  from: { id: number };
+  data?: string;
+  message?: { message_id: number; chat: { id: number }; text?: string };
+};
+
 const HORA_LINKEDIN = "30 13 * * *"; // 8:30 am Ecuador
 const RADAR_HORAS = [7, 13, 19]; // hora Ecuador: el radar corre una hora antes que los tweets
 const X_DESDE = 8;
@@ -42,9 +49,11 @@ export default {
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.TELEGRAM_WEBHOOK_SECRET) {
       return new Response("no", { status: 401 });
     }
-    const update = (await req.json()) as { message?: Mensaje };
+    const update = (await req.json()) as { message?: Mensaje; callback_query?: Boton };
     // Responder rápido a Telegram; el trabajo sigue en segundo plano.
-    if (update.message) ctx.waitUntil(atender(update.message, env).catch((e) => responder(env, `⚠️ Algo falló en el Worker: ${escapar(String(e))}`)));
+    const fallo = (e: unknown) => responder(env, `⚠️ Algo falló en el Worker: ${escapar(String(e))}`);
+    if (update.message) ctx.waitUntil(atender(update.message, env).catch(fallo));
+    if (update.callback_query) ctx.waitUntil(botonRecordatorio(update.callback_query, env).catch(fallo));
     return new Response("ok");
   },
 
@@ -53,6 +62,9 @@ export default {
       if ((await config(env, "pausa_linkedin")) !== "1") await disparar(env, "linkedin.yml");
       return;
     }
+    // Este cron corre cada minuto por los recordatorios; lo demás va solo en el minuto 0.
+    await enviarRecordatorios(env).catch((e) => console.error("Recordatorios:", e));
+    if (new Date(evento.scheduledTime).getUTCMinutes() !== 0) return;
     await sincronizarGithub(env).catch((e) => console.error("GitHub:", e));
     await sincronizarVercel(env).catch((e) => console.error("Vercel:", e));
     const hora = (new Date(evento.scheduledTime).getUTCHours() + 19) % 24; // UTC-5, Ecuador no tiene horario de verano
@@ -195,6 +207,8 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
     }
     case "/estado":
       return responder(env, await estado(env));
+    case "/recordatorios":
+      return responder(env, await listaRecordatorios(env));
     case "/start":
     case "/ayuda":
       return responder(env, AYUDA);
@@ -218,6 +232,103 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
   await reaccionar(env, m, "👀");
   await disparar(env, "chat.yml");
 }
+
+// Cada minuto: manda los recordatorios vencidos con botones para posponer.
+type Recordatorio = { id: number; texto: string; cuando: string; repetir: string | null };
+const MINUTO = 60_000;
+const BOTONES = (id: number) => ({
+  inline_keyboard: [
+    [
+      { text: "⏰ 15 min", callback_data: `pos:15:${id}` },
+      { text: "⏰ 1 h", callback_data: `pos:60:${id}` },
+      { text: "🌅 Mañana", callback_data: `pos:manana:${id}` },
+    ],
+    [{ text: "✅ Listo", callback_data: `ok:${id}` }],
+  ],
+});
+
+async function enviarRecordatorios(env: Env): Promise<void> {
+  env.TELEGRAM_CHAT_ID ||= (await config(env, "telegram_chat_id")) ?? undefined;
+  if (!env.TELEGRAM_CHAT_ID) return;
+  const { results } = await env.DB.prepare("SELECT id, texto, cuando, repetir FROM recordatorios WHERE estado = 'pendiente' AND cuando <= ? ORDER BY cuando LIMIT 20")
+    .bind(new Date().toISOString())
+    .all<Recordatorio>();
+  for (const r of results) {
+    // Primero se marca: si Telegram falla, mejor perder un aviso que mandarlo cada minuto.
+    const siguiente = r.repetir ? proximaVez(r.cuando, r.repetir) : null;
+    await env.DB.prepare("UPDATE recordatorios SET estado = ?, cuando = ? WHERE id = ?")
+      .bind(siguiente ? "pendiente" : "enviado", siguiente ?? r.cuando, r.id)
+      .run();
+    const repite = r.repetir ? `\n🔁 <i>${r.repetir} · el próximo: ${horaEcuador(siguiente!)}</i>` : "";
+    await telegram(env, "sendMessage", {
+      chat_id: env.TELEGRAM_CHAT_ID,
+      text: `⏰ <b>Recordatorio</b>\n\n${escapar(r.texto)}${repite}`,
+      parse_mode: "HTML",
+      reply_markup: BOTONES(r.id),
+    });
+  }
+}
+
+// Ecuador es UTC-5 todo el año: sumar días en UTC no se descuadra.
+function proximaVez(cuando: string, repetir: string): string {
+  const d = new Date(cuando);
+  const ahora = Date.now();
+  do {
+    if (repetir === "mensual") d.setUTCMonth(d.getUTCMonth() + 1);
+    else d.setUTCDate(d.getUTCDate() + (repetir === "semanal" ? 7 : 1));
+    if (repetir === "laborables") while ([0, 6].includes(new Date(d.getTime() - 5 * 3_600_000).getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+  } while (d.getTime() <= ahora); // si el Worker estuvo caído, no manda los atrasados en ráfaga
+  return d.toISOString();
+}
+
+async function botonRecordatorio(b: Boton, env: Env): Promise<void> {
+  env.TELEGRAM_CHAT_ID ||= (await config(env, "telegram_chat_id")) ?? undefined;
+  if (String(b.from.id) !== env.TELEGRAM_CHAT_ID || !b.message || !b.data) return;
+  const [accion, minutos, idTexto] = b.data.split(":");
+  const id = Number(accion === "ok" ? minutos : idTexto);
+  const r = await env.DB.prepare("SELECT id, texto, cuando, repetir FROM recordatorios WHERE id = ?").bind(id).first<Recordatorio>();
+  let aviso = "✅ Listo";
+  let pie = "\n\n✅ <i>Listo</i>";
+  if (accion === "pos" && r) {
+    const cuando = minutos === "manana" ? mananaNueve() : new Date(Date.now() + Number(minutos) * MINUTO).toISOString();
+    // Posponer un recordatorio que se repite crea uno suelto: la serie sigue igual.
+    if (r.repetir) {
+      await env.DB.prepare("INSERT INTO recordatorios (texto, cuando, creado) VALUES (?, ?, ?)").bind(r.texto, cuando, new Date().toISOString()).run();
+    } else {
+      await env.DB.prepare("UPDATE recordatorios SET estado = 'pendiente', cuando = ? WHERE id = ?").bind(cuando, id).run();
+    }
+    aviso = `⏰ Te lo vuelvo a recordar ${horaEcuador(cuando)}`;
+    pie = `\n\n⏰ <i>Pospuesto: ${horaEcuador(cuando)}</i>`;
+  }
+  await telegram(env, "answerCallbackQuery", { callback_query_id: b.id, text: aviso });
+  await telegram(env, "editMessageText", {
+    chat_id: b.message.chat.id,
+    message_id: b.message.message_id,
+    text: `⏰ <b>Recordatorio</b>\n\n${escapar(r?.texto ?? b.message.text ?? "")}${pie}`,
+    parse_mode: "HTML",
+  });
+}
+
+// Mañana a las 9:00 am Ecuador (14:00 UTC).
+function mananaNueve(): string {
+  const d = new Date(Date.now() - 5 * 3_600_000);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 14)).toISOString();
+}
+
+async function listaRecordatorios(env: Env): Promise<string> {
+  const { results } = await env.DB.prepare("SELECT id, texto, cuando, repetir FROM recordatorios WHERE estado = 'pendiente' ORDER BY cuando LIMIT 30").all<Recordatorio>();
+  if (!results.length) return "⏰ No tienes recordatorios pendientes.\n\nPídemelos normal: <i>\"recuérdame mañana a las 10 llamar al contador\"</i>";
+  return [
+    "⏰ <b>Tus recordatorios</b>",
+    "",
+    ...results.map((r) => `• ${horaEcuador(r.cuando)}${r.repetir ? ` 🔁 ${r.repetir}` : ""}\n  ${escapar(r.texto)}`),
+    "",
+    "<i>Para cancelar uno dime \"cancela el de …\"</i>",
+  ].join("\n");
+}
+
+const horaEcuador = (iso: string) =>
+  new Date(iso).toLocaleString("es-EC", { timeZone: "America/Guayaquil", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 async function estado(env: Env): Promise<string> {
   const { results: cfg } = await env.DB.prepare(
@@ -296,6 +407,11 @@ Tu piquero de confianza para X y LinkedIn.
 📸 <b>Mándame fotos</b> y las pongo en tus tweets
 
 ⚡ <b>Atajos</b>
+⏰ <b>Recordatorios</b>
+• "recuérdame mañana a las 10 llamar al contador"
+• "todos los lunes a las 8 revisar métricas"
+⏰ /recordatorios · ver los pendientes
+
 📊 /estado · cómo van los agentes
 ⏸️ /pausa x · /pausa linkedin · /pausa (todo)
 ▶️ /sigue x · /sigue linkedin · /sigue (todo)

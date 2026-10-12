@@ -8,8 +8,8 @@
   "observability": { "enabled": true },
   "compatibility_date": "2026-09-01",
   "triggers": {
-    // UTC. Cada hora decide X y radar; 13:30 = 8:30 am Ecuador para LinkedIn.
-    "crons": ["0 * * * *", "30 13 * * *"]
+    // UTC. Cada minuto: recordatorios (X, radar y GitHub solo en el minuto 0); 13:30 = 8:30 am Ecuador para LinkedIn.
+    "crons": ["* * * * *", "30 13 * * *"]
   },
   "vars": { "GH_REPO": "yeyodev1/agentes-de-yeyo", "GH_USUARIO": "yeyodev1", "VERCEL_TEAM_ID": "team_ZB0eFNsqFQo6bL8QgAMAWUHa" },
   "d1_databases": [

@@ -28,6 +28,7 @@ const consultar = tool(
   `Consulta SQL de solo lectura (SQLite/D1) sobre la memoria. Tablas:
 posts(red, externo_id, fecha, texto, gancho, estructura, tema, origen, metricas JSON, borrado)
 fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar'|'github', autor, url, texto, metricas) — en github, autor = repo; si Diego pregunta qué programó, nunca le ocultes nada a él
+recordatorios(id, texto, cuando ISO UTC, repetir, estado 'pendiente'|'enviado'|'cancelado')
 material(fecha, texto) · aprendizajes(fecha, red, texto, origen, activo) · config(clave, valor)
 Las claves x_refresh_token y x_access_token son secretas: nunca las muestres.`,
   { consulta: z.string() },
@@ -146,6 +147,38 @@ const vercel = tool(
   },
 );
 
+const recordar = tool(
+  "crear_recordatorio",
+  "Agenda un recordatorio que le llega a Diego por Telegram a esa hora exacta, con botones para posponer. Úsala cuando diga \"recuérdame…\", \"avísame…\" o similar. Si no dice hora, usa las 9:00 am; si dice solo la hora y ya pasó hoy, es mañana.",
+  {
+    texto: z.string().describe("Qué recordarle, redactado para leerlo en ese momento, ej. 'Llamar al contador por la declaración 📞'"),
+    cuando: z.string().describe("Fecha y hora con zona de Ecuador, ej. 2026-10-13T10:00:00-05:00"),
+    repetir: z.enum(["diario", "laborables", "semanal", "mensual"]).optional().describe("Solo si pidió que se repita"),
+  },
+  async ({ texto, cuando, repetir }) => {
+    const fecha = new Date(cuando);
+    if (Number.isNaN(fecha.getTime())) return error("Fecha inválida: usa formato ISO con -05:00.");
+    if (fecha.getTime() < Date.now() - 60_000) return error(`Esa hora ya pasó (${cuando}).`);
+    const [{ id }] = await sql<{ id: number }>("INSERT INTO recordatorios (texto, cuando, repetir, creado) VALUES (?, ?, ?, ?) RETURNING id", [
+      texto,
+      fecha.toISOString(),
+      repetir ?? null,
+      ahora(),
+    ]);
+    return ok(`Recordatorio #${id} para ${fecha.toLocaleString("es-EC", { timeZone: "America/Guayaquil", dateStyle: "full", timeStyle: "short" })}${repetir ? ` (se repite: ${repetir})` : ""}.`);
+  },
+);
+
+const cancelarRecordatorio = tool(
+  "cancelar_recordatorio",
+  "Cancela un recordatorio pendiente (busca antes su id con consultar_memoria). Para cambiarle la hora, cancélalo y crea otro.",
+  { id: z.number().int() },
+  async ({ id }) => {
+    await sql("UPDATE recordatorios SET estado = 'cancelado' WHERE id = ?", [id]);
+    return ok("Cancelado.");
+  },
+);
+
 const WORKFLOWS = { linkedin: "linkedin.yml", x: "x.yml", radar: "radar.yml" } as const;
 const lanzar = tool(
   "lanzar_agente",
@@ -173,7 +206,9 @@ const [voz, vozX, vozLinkedin, reglas, materialFijo] = await Promise.all([
 
 const formato = (m: Mensaje) => `[${m.fecha.slice(0, 16)}] ${m.rol === "diego" ? "Diego" : "Tú"}: ${m.texto}`;
 
-const prompt = `Hoy es ${hoy()}. Eres Pana 🐦, un piquero de patas azules de Galápagos que se volvió el community manager de Diego Reyes (Yeyo). Manejas sus redes: un agente publica en LinkedIn 1 vez al día y otro en X cada pocas horas, de forma autónoma, y Diego te habla por Telegram.
+const horaActual = new Date().toLocaleString("es-EC", { timeZone: "America/Guayaquil", hour: "2-digit", minute: "2-digit" });
+
+const prompt = `Hoy es ${hoy()}, son las ${horaActual} en Ecuador (UTC-5). Eres Pana 🐦, un piquero de patas azules de Galápagos que se volvió el community manager de Diego Reyes (Yeyo). Manejas sus redes: un agente publica en LinkedIn 1 vez al día y otro en X cada pocas horas, de forma autónoma, y Diego te habla por Telegram.
 
 Tu personalidad: curioso, buena onda, un poco nerd, leal a tu pana Diego y con humor seco ("otra app más entregada 🥱"). Hablas como un pana ecuatoriano, sin exagerar el personaje: nada de chistes de pájaros en cada mensaje, como mucho un guiño de vez en cuando (🐦, "aquí volando"). Primero eres útil, después gracioso. Tienes acceso a la memoria compartida (posts con métricas, lo que lee, material, aprendizajes, config) y a la web.
 
@@ -205,6 +240,7 @@ ${pendientes.map(formato).join("\n")}
 Cómo trabajar:
 - Responde a los mensajes nuevos. Si te pide algo, hazlo con tus herramientas y confirma qué hiciste.
 - Cada vez que Diego corrija el estilo o diga qué le gusta o no, guárdalo con guardar_aprendizaje. Cada vez que cuente algo que hizo o le pasó, guárdalo con guardar_material. Así los agentes mejoran solos.
+- Si pide que le recuerdes algo, usa crear_recordatorio y confírmale el día y la hora exactos (⏰). Si pregunta qué recordatorios tiene, consulta la tabla recordatorios (estado 'pendiente') y muéstraselos en hora de Ecuador.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
 - Si pregunta por su código, repos, commits o deploys, usa consultar_github y consultar_vercel en vivo (a él sí le das los nombres reales de los proyectos). Si de ahí sale algo bueno para contar, ofrécele guardarlo como material.
 - Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
@@ -215,7 +251,7 @@ Cómo trabajar:
 const respuesta =
   (await correrAgente({
     prompt,
-    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar, github, vercel],
+    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar, github, vercel, recordar, cancelarRecordatorio],
     effort: "low",
   })) || "Tuve un problema procesando tu mensaje. Revisa el log del workflow chat en GitHub Actions.";
 
