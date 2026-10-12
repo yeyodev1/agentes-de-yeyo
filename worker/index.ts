@@ -83,7 +83,7 @@ async function atender(m: Mensaje, env: Env): Promise<void> {
     if (texto !== `/start ${env.TELEGRAM_VINCULO}`) return;
     await guardarConfig(env, "telegram_chat_id", String(m.chat.id));
     env.TELEGRAM_CHAT_ID = String(m.chat.id);
-    return responder(env, "🤝 <b>Listo Diego, quedé vinculado contigo.</b>\n\nDesde ahora solo te hago caso a ti 🔒\nEscribe /ayuda para ver todo lo que puedo hacer 🚀");
+    return responder(env, "🐦 <b>Qué más Diego, soy Pana.</b>\n\nQuedé vinculado contigo: desde ahora solo te hago caso a ti 🔒\nEscribe /ayuda para ver todo lo que puedo hacer 🚀");
   }
   if (String(m.from?.id) !== env.TELEGRAM_CHAT_ID) return; // solo Diego
 
@@ -148,7 +148,7 @@ async function estado(env: Env): Promise<string> {
   const hora = (iso: string) =>
     new Date(iso).toLocaleString("es-EC", { timeZone: "America/Guayaquil", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   return [
-    "📊 <b>Estado de tus agentes</b>",
+    "🐦📊 <b>Así vamos, pana</b>",
     "",
     `💼 <b>LinkedIn</b>: ${c.pausa_linkedin === "1" ? "⏸️ en pausa" : "✅ activo · diario 8:30 am"}`,
     `🐦 <b>X</b>: ${c.pausa_x === "1" ? "⏸️ en pausa" : `✅ activo · cada ${c.x_cada_horas} h (máx ${c.x_max_dia} al día)`}`,
@@ -201,7 +201,8 @@ const escapar = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 
 const nombreRed = (r: string) => ({ x: "🐦 X", linkedin: "💼 LinkedIn", radar: "📡 el radar" })[r] ?? r;
 
-const AYUDA = `👋🏾 <b>Soy tu agente de redes</b>
+const AYUDA = `🐦 <b>Qué más, soy Pana</b>
+Tu piquero de confianza para X y LinkedIn.
 
 💬 <b>Háblame normal</b>
 • "cómo van mis tweets esta semana?"
