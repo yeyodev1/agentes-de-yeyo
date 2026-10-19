@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   actions: write # para lanzar a los otros agentes desde el chat
+  issues: write # abrir el issue "consulta-instagram" dispara el reporte en vivo de Buzzfy
   contents: read
 
 jobs:

@@ -195,6 +195,26 @@ const lanzar = tool(
   },
 );
 
+const instagramVivo = tool(
+  "consultar_instagram_vivo",
+  `Pide un reporte FRESCO de Instagram/Buzzfy ahora mismo: abre (y cierra) un issue en el repo, eso dispara la rutina de Buzzfy en la nube y el reporte le llega a Diego por Telegram como mensaje aparte (📸) en 1 a 2 minutos. Úsala solo cuando pida datos de ahorita / en vivo; para preguntas normales basta el último reporte en fuentes origen='instagram'.`,
+  {},
+  async () => {
+    const base = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues`;
+    const cab = { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
+    const res = await fetch(base, {
+      method: "POST",
+      headers: cab,
+      body: JSON.stringify({ title: "consulta-instagram", body: "Diego pidió el reporte de Instagram en vivo desde Telegram. Este issue solo dispara la rutina; se cierra solo." }),
+    });
+    if (res.status !== 201) return error(`GitHub respondió ${res.status}: ${await res.text()}`);
+    const { number } = (await res.json()) as { number: number };
+    // El webhook ya se disparó con el opened; se cierra de una para no dejar basura en el repo.
+    await fetch(`${base}/${number}`, { method: "PATCH", headers: cab, body: JSON.stringify({ state: "closed" }) });
+    return ok("Listo, pedí el reporte en vivo: le llega a Diego por Telegram en 1 a 2 minutos como mensaje aparte 📸. Díselo para que no lo espere en esta respuesta.");
+  },
+);
+
 // La voz va siempre: si Diego pide un borrador, tiene que sonar a él.
 const [voz, vozX, vozLinkedin, reglas, materialFijo] = await Promise.all([
   readFile("contenido/voz.md", "utf8"),
@@ -243,7 +263,7 @@ Cómo trabajar:
 - Si pide que le recuerdes algo, usa crear_recordatorio y confírmale el día y la hora exactos (⏰). Si pregunta qué recordatorios tiene, consulta la tabla recordatorios (estado 'pendiente') y muéstraselos en hora de Ecuador.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
 - Si pregunta por su código, repos, commits o deploys, usa consultar_github y consultar_vercel en vivo (a él sí le das los nombres reales de los proyectos). Si de ahí sale algo bueno para contar, ofrécele guardarlo como material.
-- Si pregunta por Instagram, sus reels, los trial reels o Buzzfy (📸), consulta fuentes con origen = 'instagram' (reportes que deja la rutina de Buzzfy, el más reciente primero) y respóndele con esos números. Si no hay reportes recientes, dile que la rutina aún no ha corrido.
+- Si pregunta por Instagram, sus reels, los trial reels o Buzzfy (📸), consulta fuentes con origen = 'instagram' (reportes que deja la rutina de Buzzfy, el más reciente primero) y respóndele con esos números. Si no hay reportes recientes, o si pide datos de AHORITA / en vivo / actualizados, usa consultar_instagram_vivo y avísale que el reporte fresco le llega en 1 a 2 minutos como mensaje aparte.
 - Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
@@ -252,7 +272,7 @@ Cómo trabajar:
 const respuesta =
   (await correrAgente({
     prompt,
-    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar, github, vercel, recordar, cancelarRecordatorio],
+    herramientas: [consultar, aprender, olvidar, material, configurar, publicar, borrar, lanzar, github, vercel, recordar, cancelarRecordatorio, instagramVivo],
     effort: "low",
   })) || "Tuve un problema procesando tu mensaje. Revisa el log del workflow chat en GitHub Actions.";
 
