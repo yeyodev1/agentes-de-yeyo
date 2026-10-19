@@ -43,6 +43,7 @@ export default {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/api/sql") return consultaAgentes(req, env);
     if (req.method === "POST" && url.pathname === "/api/instagram") return avisoInstagram(req, env);
+    if (url.pathname === "/api/instagram/ordenes") return ordenesInstagram(req, env);
     if (req.method === "POST" && url.pathname === "/api/github") {
       if (!igualSeguro(req.headers.get("Authorization") ?? "", `Bearer ${env.AGENTES_SECRET}`)) return new Response("no", { status: 401 });
       return Response.json({ github: await sincronizarGithub(env), vercel: await sincronizarVercel(env) });
@@ -164,6 +165,22 @@ async function avisoInstagram(req: Request, env: Env): Promise<Response> {
   // **negritas** del reporte se vuelven <b> reales; el resto va escapado.
   const cuerpo = escapar(texto.slice(0, 3800)).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
   if (avisar && env.TELEGRAM_CHAT_ID) await responder(env, `📸 <b>Instagram</b>\n\n${cuerpo}`);
+  return Response.json({ ok: true });
+}
+
+// Órdenes de Instagram que Diego da por Telegram: Pana las encola en D1 con el texto
+// exacto que él aprobó y la rutina cloud las recoge por GET, las ejecuta y marca por POST.
+async function ordenesInstagram(req: Request, env: Env): Promise<Response> {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!env.AVISOS_SECRET || !igualSeguro(auth, `Bearer ${env.AVISOS_SECRET}`)) return new Response("no", { status: 401 });
+  if (req.method === "GET") {
+    const { results } = await env.DB.prepare("SELECT id, fecha, tipo, datos FROM ordenes_ig WHERE estado = 'pendiente' ORDER BY id LIMIT 10").all();
+    return Response.json({ ordenes: results });
+  }
+  if (req.method !== "POST") return new Response("no", { status: 405 });
+  const { id, estado, resultado = null } = (await req.json()) as { id?: number; estado?: string; resultado?: string | null };
+  if (!id || !["hecha", "fallida"].includes(estado ?? "")) return Response.json({ error: "Falta id o estado ('hecha'|'fallida')" }, { status: 400 });
+  await env.DB.prepare("UPDATE ordenes_ig SET estado = ?, resultado = ? WHERE id = ?").bind(estado, resultado, id).run();
   return Response.json({ ok: true });
 }
 
