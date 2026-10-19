@@ -161,7 +161,9 @@ async function avisoInstagram(req: Request, env: Env): Promise<Response> {
     .bind(new Date().toISOString(), `ig@${Date.now()}`, texto.slice(0, 8000))
     .run();
   env.TELEGRAM_CHAT_ID ||= (await config(env, "telegram_chat_id")) ?? undefined;
-  if (avisar && env.TELEGRAM_CHAT_ID) await responder(env, `📸 <b>Instagram</b>\n\n${escapar(texto.slice(0, 3800))}`);
+  // **negritas** del reporte se vuelven <b> reales; el resto va escapado.
+  const cuerpo = escapar(texto.slice(0, 3800)).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+  if (avisar && env.TELEGRAM_CHAT_ID) await responder(env, `📸 <b>Instagram</b>\n\n${cuerpo}`);
   return Response.json({ ok: true });
 }
 

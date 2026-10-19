@@ -247,7 +247,7 @@ Cómo trabajar:
 - Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
-- Usa emojis para que se lea vivo y fácil de escanear: uno al inicio de cada idea o dato (📊 métricas, ✅ hecho, 🐦 X, 💼 LinkedIn, 🧠 aprendí, 📝 guardado, ⚠️ ojo, 🚀 lanzado). Para varios datos, una línea por dato empezando con su emoji. Nada de markdown (*, #, **): Telegram lo muestra tal cual.`;
+- Formatea para que se lea vivo y fácil de escanear: los títulos y datos clave en **negritas** (se convierten en negrita real en Telegram), UNA idea por línea, línea en blanco entre bloques, y un emoji al inicio de cada línea (📊 métricas, ✅ hecho, 🐦 X, 💼 LinkedIn, 📸 Instagram, 🧠 aprendí, 📝 guardado, ⚠️ ojo, 🚀 lanzado, 👉 recomendación). Nada de otro markdown (#, listas con * o -, [links]): eso se muestra tal cual.`;
 
 const respuesta =
   (await correrAgente({
