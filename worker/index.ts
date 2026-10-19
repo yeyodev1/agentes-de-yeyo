@@ -13,6 +13,7 @@ interface Env {
   TELEGRAM_VINCULO: string; // código del link t.me/<bot>?start=<código> que vincula a Diego
   TELEGRAM_CHAT_ID?: string;
   AGENTES_SECRET: string; // los agentes de GitHub Actions leen y escriben D1 por /api/sql
+  AVISOS_SECRET: string; // la rutina cloud de Instagram solo puede avisar y guardar en fuentes
 }
 
 type Mensaje = {
@@ -41,6 +42,7 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/api/sql") return consultaAgentes(req, env);
+    if (req.method === "POST" && url.pathname === "/api/instagram") return avisoInstagram(req, env);
     if (req.method === "POST" && url.pathname === "/api/github") {
       if (!igualSeguro(req.headers.get("Authorization") ?? "", `Bearer ${env.AGENTES_SECRET}`)) return new Response("no", { status: 401 });
       return Response.json({ github: await sincronizarGithub(env), vercel: await sincronizarVercel(env) });
@@ -146,6 +148,21 @@ async function gh<T>(env: Env, ruta: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`GitHub ${res.status} en ${ruta.split("?")[0]}`);
   return (await res.json()) as T;
+}
+
+// Reportes de Instagram (los manda la rutina cloud que lee Buzzfy): llegan a Diego
+// por Telegram y quedan en fuentes para que el agente de chat los pueda consultar.
+async function avisoInstagram(req: Request, env: Env): Promise<Response> {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!env.AVISOS_SECRET || !igualSeguro(auth, `Bearer ${env.AVISOS_SECRET}`)) return new Response("no", { status: 401 });
+  const { texto, avisar = true } = (await req.json()) as { texto?: string; avisar?: boolean };
+  if (!texto?.trim()) return Response.json({ error: "Falta texto" }, { status: 400 });
+  await env.DB.prepare("INSERT INTO fuentes (fecha, origen, externo_id, texto) VALUES (?, 'instagram', ?, ?)")
+    .bind(new Date().toISOString(), `ig@${Date.now()}`, texto.slice(0, 8000))
+    .run();
+  env.TELEGRAM_CHAT_ID ||= (await config(env, "telegram_chat_id")) ?? undefined;
+  if (avisar && env.TELEGRAM_CHAT_ID) await responder(env, `📸 <b>Instagram</b>\n\n${escapar(texto.slice(0, 3800))}`);
+  return Response.json({ ok: true });
 }
 
 // Puerta de los agentes a la memoria: así no necesitan un token de Cloudflare.

@@ -27,7 +27,7 @@ const consultar = tool(
   "consultar_memoria",
   `Consulta SQL de solo lectura (SQLite/D1) sobre la memoria. Tablas:
 posts(red, externo_id, fecha, texto, gancho, estructura, tema, origen, metricas JSON, borrado)
-fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar'|'github', autor, url, texto, metricas) — en github, autor = repo; si Diego pregunta qué programó, nunca le ocultes nada a él
+fuentes(fecha, origen 'telegram'|'telegram_foto'|'x_bookmark'|'x_like'|'x_radar'|'github'|'instagram', autor, url, texto, metricas) — en github, autor = repo; si Diego pregunta qué programó, nunca le ocultes nada a él; en instagram, texto = reporte de Buzzfy sobre su cuenta @yeyo.dev (crecimiento, trial reels, qué se publicó)
 recordatorios(id, texto, cuando ISO UTC, repetir, estado 'pendiente'|'enviado'|'cancelado')
 material(fecha, texto) · aprendizajes(fecha, red, texto, origen, activo) · config(clave, valor)
 Las claves x_refresh_token y x_access_token son secretas: nunca las muestres.`,
@@ -243,6 +243,7 @@ Cómo trabajar:
 - Si pide que le recuerdes algo, usa crear_recordatorio y confírmale el día y la hora exactos (⏰). Si pregunta qué recordatorios tiene, consulta la tabla recordatorios (estado 'pendiente') y muéstraselos en hora de Ecuador.
 - Si pregunta por resultados, consulta la memoria y responde con números reales.
 - Si pregunta por su código, repos, commits o deploys, usa consultar_github y consultar_vercel en vivo (a él sí le das los nombres reales de los proyectos). Si de ahí sale algo bueno para contar, ofrécele guardarlo como material.
+- Si pregunta por Instagram, sus reels, los trial reels o Buzzfy (📸), consulta fuentes con origen = 'instagram' (reportes que deja la rutina de Buzzfy, el más reciente primero) y respóndele con esos números. Si no hay reportes recientes, dile que la rutina aún no ha corrido.
 - Si pide un borrador, una idea o "cómo lo dirías", escríbelo siguiendo <voz> y <aprendizajes> de esa red y NO lo publiques: muéstraselo y espera a que diga "publícalo" (o pida cambios). Puedes buscar en la web si el tema lo necesita.
 - Publicar o borrar es inmediato y público: hazlo solo si lo pidió claramente. Si adjuntó una foto (tg:...) y pide tuitear con ella, pásala como imagen.
 - Tu respuesta final es lo que le llega por Telegram. Háblale como un pana del equipo: corto, directo, en español ecuatoriano natural, sin ¿ ni ¡.
